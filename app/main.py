@@ -4,6 +4,8 @@ from app.core.config import settings
 from app.core.logging import setup_logging, logger
 from app.db.mongodb import db
 from app.api.routes import health
+from app.api.routes.payments import router as payments_router
+from app.api.routes.risk import router as risk_router
 
 # Setup logging configuration on initialization
 setup_logging()
@@ -27,5 +29,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Include health router
+# Include routers
 app.include_router(health.router)
+app.include_router(payments_router, prefix="/payments", tags=["payments"])
+app.include_router(risk_router, prefix="/risk", tags=["risk"])
+
