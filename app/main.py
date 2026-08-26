@@ -1,8 +1,13 @@
+import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
 from app.core.config import settings
-from app.core.logging import setup_logging, logger
+from app.core.logging import setup_logging, logger, correlation_id_var
 from app.db.mongodb import db
 from app.api.routes import health
 from app.api.routes.payments import router as payments_router
@@ -17,6 +22,9 @@ setup_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup validation
+    settings.validate_startup()
+    
     # Startup: Connect to MongoDB
     logger.info("Initializing RecoverAI services...")
     await db.connect()
@@ -42,6 +50,63 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Correlation ID Middleware
+@app.middleware("http")
+async def add_correlation_id(request: Request, call_next):
+    # Retrieve X-Correlation-ID from header or generate a new request trace ID
+    corr_id = request.headers.get("X-Correlation-ID") or f"req_{uuid.uuid4().hex[:8]}"
+    token = correlation_id_var.set(corr_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Correlation-ID"] = corr_id
+        return response
+    finally:
+        correlation_id_var.reset(token)
+
+
+# Standardized API Error Handlers
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": f"HTTP_ERROR_{exc.status_code}",
+                "message": exc.detail
+            }
+        }
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=400,
+        content={
+            "error": {
+                "code": "VALIDATION_FAILED",
+                "message": "The request payload failed schema validation.",
+                "details": exc.errors()
+            }
+        }
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Internal server error: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "code": "INTERNAL_SERVER_ERROR",
+                "message": "An unexpected server error occurred. Please check logs."
+            }
+        }
+    )
+
+
 # Include routers
 app.include_router(health.router)
 app.include_router(payments_router, prefix="/payments", tags=["payments"])
@@ -49,6 +114,7 @@ app.include_router(risk_router, prefix="/risk", tags=["risk"])
 app.include_router(recovery_router, prefix="/recovery", tags=["recovery"])
 app.include_router(webhooks_router, prefix="/webhooks", tags=["webhooks"])
 app.include_router(evaluations_router, prefix="/evaluations", tags=["evaluations"])
+
 
 
 

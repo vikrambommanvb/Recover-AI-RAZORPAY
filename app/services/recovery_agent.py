@@ -160,6 +160,7 @@ class RecoveryAgentService:
             "payment_id": payment.payment_id,
             "ai_provider": settings.AI_PROVIDER,
             "ai_model": settings.GROQ_MODEL if settings.AI_PROVIDER.lower() == "groq" else "mock",
+            "prompt_version": "v1",
             "recommended_action": recommendation.action,
             "confidence": recommendation.confidence,
             "reason": recommendation.reason,

@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field
+from app.core.logging import correlation_id_var
 
 
 class RecoveryActionRecord(BaseModel):
@@ -23,6 +24,10 @@ class AuditLog(BaseModel):
     entity_type: str = Field(..., description="Type of entity, e.g. payment, recovery_case")
     entity_id: str = Field(..., description="ID of the entity")
     details: Dict[str, Any] = Field(default_factory=dict, description="Detailed changes or log data")
+    correlation_id: str = Field(
+        default_factory=lambda: correlation_id_var.get() if 'correlation_id_var' in globals() else "req_system",
+        description="Request correlation ID to trace workflows"
+    )
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

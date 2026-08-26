@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, Field
+from app.core.logging import correlation_id_var
 
 
 class RecoveryActionStatus(str, Enum):
@@ -32,5 +33,9 @@ class RecoveryAction(BaseModel):
     attempt_number: int = Field(1, description="Number of recovery attempts made for this case")
     policy_decision: str = Field("ALLOW", description="Outcome of the deterministic PolicyEngine evaluation")
     reason: Optional[str] = Field(None, description="Detailed explanation/reasoning of the execution result")
+    correlation_id: str = Field(
+        default_factory=lambda: correlation_id_var.get() if 'correlation_id_var' in globals() else "req_system",
+        description="Request correlation ID to trace workflows"
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

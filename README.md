@@ -1,373 +1,199 @@
-# RecoverAI Backend Foundation
+# RecoverAI
 
-AI Revenue Recovery Agent for Razorpay Test Mode.
-
----
-
-## Track 03: AI Revenue Recovery
-
-### Problem
-
-Payment failures and degraded payment experiences can turn recoverable revenue into lost revenue. When transactions fail due to transient gateway issues, bank timeouts, or addressable user problems (such as expired cards or low balances), the lack of intelligent, automated recovery paths results in lost customers and reduced conversions.
-
-### Planned Solution
-
-We are building a multi-stage automated recovery engine following this pipeline:
-```
-Detect (Risk) ➔ Diagnose (Root Cause) ➔ Decide (AI Action) ➔ Guard (Policy Engine) ➔ Execute (Razorpay API) ➔ Verify (Status) ➔ Measure (Revenue) ➔ Audit (Logs)
-```
-
-### Current Status
-
-This milestone establishes the **Backend Foundation** for the system. It implements configuration, FastAPI application structure, MongoDB connection pooling, domain schemas, an abstract AI Provider interface (with Groq implementation), and deterministic Policy Engine guardrails. 
-
-*Note: The frontend dashboard, full AI agent dialogs, and direct Razorpay write integrations are planned for future phases.*
+RecoverAI is a closed-loop revenue recovery intelligence and safety execution gateway designed for Razorpay in Test Mode. It converts AI intervention recommendations into deterministic gateway actions under strict safety guardrails.
 
 ---
 
-## Safety Principle
-
-> [!IMPORTANT]
-> **AI recommendations never directly authorize financial actions.** 
-> All actions proposed by the AI Provider must first pass through the deterministic `PolicyEngine` (guardrails) before any future Razorpay operation can execute.
+## Problem
+In online commerce, payment failures are common. However, payment failure is not a single state; failures occur due to transient handshakes, expired cards, low balances, or network drops. Without automated, context-aware recovery paths, merchants lose recoverable transactions, resulting in customer churn and revenue leakage.
 
 ---
 
-## Phase 2: Revenue Risk & Payment Intelligence
-
-Phase 2 implements the deterministic Revenue Risk & Payment Intelligence Engine to convert raw payment records into structured recovery cases without making active AI calls (which are deferred to Phase 3).
-
-### Workflow Pipeline
-
-```
-Payment Record ➔ Payment Analysis ➔ Revenue Risk Detection ➔ Amount At Risk ➔ Root Cause Classification ➔ Recovery Case
-```
-
-### Deterministic Engine Logic
-
-1. **Risk Status Mapping**:
-   * Successful payments (e.g. `captured`, `authorized`, `success`) ➔ `NOT_AT_RISK`
-   * Failed payments with recoverable/transient issues ➔ `AT_RISK`
-   * Unrecognized or ambiguous statuses ➔ `UNKNOWN`
-
-2. **Root Cause Classification**:
-   * Network, timeout, connection lost ➔ `TRANSIENT_FAILURE`
-   * Insufficient funds/balance ➔ `CUSTOMER_FUNDS`
-   * Issuing bank card declines, expired credentials ➔ `PAYMENT_DECLINED`
-   * Unmapped or unknown gateway errors ➔ `UNKNOWN`
-
-3. **Amount At Risk Calculation**:
-   * Financial amounts strictly use minor units (paise for INR). No floating-point division is used.
-   * If risk status is `AT_RISK` or `UNKNOWN` ➔ `amount_at_risk = payment.amount`
-   * If risk status is `NOT_AT_RISK` ➔ `amount_at_risk = 0`
-
-4. **Idempotency & Customer History**:
-   * Analysis of a payment ID is fully idempotent. If a recovery case already exists for a payment, it is reused.
-   * On case creation, customer payment history (total count, success count, failure count) prior to the target payment creation timestamp is fetched and attached to the recovery case for contextual intervention.
-
-### API Endpoints
-
-* **Payments**:
-  * `GET /payments`: List stored payments (supports `limit` and `offset` paging).
-  * `GET /payments/{payment_id}`: Retrieve a single payment record.
-* **Risk & Recovery Cases**:
-  * `POST /risk/analyze/{payment_id}`: Run deterministic risk analysis and return/create a recovery case.
-  * `GET /risk/cases`: List recovery cases (supports `limit` and `offset` paging).
-  * `GET /risk/cases/{case_id}`: Retrieve a specific recovery case by its ID.
-
-#### Example API Response (`POST /risk/analyze/{payment_id}`)
-```json
-{
-  "payment_id": "pay_syn_002",
-  "risk_status": "AT_RISK",
-  "amount_at_risk": 59900,
-  "root_cause": "TRANSIENT_FAILURE",
-  "recovery_case_id": "case_pay_syn_002"
-}
-```
-
+## Why This Matters
+Merchants often lack granular, real-time insights to diagnose payment failures. Simple retry strategies are unsafe (e.g. risking double capture on slow responses), while human-driven recovery is too slow. RecoverAI bridges this gap by automatically classifying risk, deciding optimal recovery interventions using AI, and executing them safely.
 
 ---
 
-## Phase 3: AI Recovery Decision Agent
+## Solution
+RecoverAI implements a multi-stage automated recovery engine following this closed-loop pipeline:
+* **Detect**: Identifies failed payments and creates a structured recovery case with prior customer history context.
+* **Diagnose**: Classifies the root cause (transient error, customer funds, declined card).
+* **Decide**: An advisory AI agent proposes a recovery action (Retry, Remind, Escalate, Stop).
+* **Guard**: A deterministic Policy Engine evaluates the recommendation against hard rules.
+* **Execute**: Executed safely against Razorpay API in Test Mode.
+* **Verify**: Verifies outcome state via signature-checked webhook events.
+* **Measure**: Computes actual recovered revenue from verified captured outcomes.
+* **Audit**: Persists complete, traceable correlation ID trails in database logs.
 
-Phase 3 implements the **AI Recovery Decision Agent**. The purpose of this phase is to allow the AI to analyze an existing revenue-recovery case and recommend an appropriate intervention.
+---
 
-### Core Security Principles
-
-> [!IMPORTANT]
-> **Advisory Only**: The AI recommends interventions but **never** directly authorizes or executes financial actions. It does not call Razorpay or modify payment states directly.
-> **Deterministic Guardrails Control**: All AI recommendations are passed through the deterministic `PolicyEngine`. The engine retains the ultimate authority to permit (`ALLOW`), reject (`BLOCK`), or escalate for human review (`ESCALATE`) the recommendation.
-
-### Pipeline Workflow
+## Architecture
 
 ```
-Recovery Case ➔ Context Builder ➔ AI Provider (Groq/Mock) ➔ Pydantic Validation ➔ PolicyEngine ➔ Persist & Audit
+        Payment Fail Event (Gateway / Webhook)
+                         ↓
+               Revenue Risk Detector
+                         ↓
+               Recovery Case Builder
+                         ↓
+              AI Agent Recommendation (Mixtral / LLM)
+                         ↓
+            Deterministic Policy Engine (Hard Rules Gate)
+               ├── ALLOW ➔ Execution Service ➔ Razorpay Test API
+               ├── BLOCK ➔ Log Blocked Case ➔ Audit Trail
+               └── ESCALATE ➔ Log Escalation Case ➔ Human Review
+                         ↓
+            Verification Webhook (HMAC SHA-256 Signature)
+                         ↓
+            Aggregated Evaluation Metrics & Dashboard
 ```
 
-1. **Context Builder**: Constructs a structured, concise context snapshot, omitting any sensitive database IDs, credentials, or API keys.
-2. **AI Provider**: Fetches the recommendation using either the live `GroqProvider` (via the Groq API) or `MockAIProvider` (for testing/local development).
-   * **Prompt Injection Protection**: The system treats all untrusted external input (metadata, customer notes, failure reasons) strictly as data, instructing the AI model to ignore commands inside these fields.
-   * **Failure Handling**: AI timeouts, rate limits, or validation errors gracefully fall back to a safe `ESCALATE` action.
-3. **Structured AI Output**: Strictly validated using a Pydantic schema:
-   * `action`: RETRY, REMIND, ESCALATE, STOP, or NO_ACTION
-   * `confidence`: Normalized float between 0.0 and 1.0
-   * `reason`: Short reasoning explanation
-   * `risk_factors`: List of identified payment risks
-   * `recommended_message_type`: SMS/Email template recommendation
-   * `requires_human_review`: Boolean flag
-4. **Policy Engine**: Validates the recommendation against safety rules:
-   * `PaymentStatusRule`: Blocks retries on already successful or unknown payment states.
-   * `RetryLimitRule`: Blocks retries if the case has already exceeded 3 retries.
-   * `MinConfidenceRule`: Escalates the case if confidence is below 0.60.
-   * `MaxAmountRule`: Escalates the case if the transaction value is high.
-   * `EscalationRule`: Propagates any AI-recommended escalations.
-5. **Persistence & Auditing**: Saves decisions to MongoDB (marking previous decisions as stale to track history) and writes a comprehensive audit trail to the logs.
+---
 
-### API Endpoints
+## AI Design
+The AI is strictly advisory and is used where reasoning is valuable:
+* **Failure Interpretation**: Diagnosing why the payment failed using context.
+* **Intervention Recommendation**: Proposing whether to retry, send a reminder, stop, or escalate.
+* **Risk Context Analysis**: Incorporating customer history to gauge trust.
 
-* **POST `/recovery/{case_id}/decide`**:
-  Triggers the decision pipeline for a specific recovery case.
-  
-  **Example API Response:**
-  ```json
-  {
-    "case_id": "case_pay_syn_002",
-    "ai_recommendation": {
-      "action": "RETRY",
-      "confidence": 0.91,
-      "reason": "Transient payment failure with strong historical payment evidence."
-    },
-    "policy_decision": {
-      "decision": "ALLOW",
-      "reason": "Decision allowed by all guardrail rules"
-    }
-  }
-  ```
+The AI is **NOT** used for:
+* **Authorization**: The AI cannot approve payment link generation or capture transactions.
+* **Safety & Security Decisions**: The Policy Engine holds veto power.
+* **Financial Accounting**: Deciding if money has been recovered is done programmatically by verifying gateway states.
 
-### Manual Verification Script
+---
 
-You can run a manual test using the real Groq API:
+## Safety Model
+The system enforces deterministic guardrails that cannot be bypassed by the LLM:
+* **Max Amount**: Block recovery if the amount exceeds ₹5,000 (`MAX_RECOVERY_AMOUNT_MINOR=500000`).
+* **Attempt Limits**: Max 2 attempts (`MAX_RECOVERY_ATTEMPTS=2`). Reaching this limits escalates the case.
+* **Cooldown Gates**: Cooldown of 5 minutes (`RECOVERY_COOLDOWN_SECONDS=300`) between attempts to prevent spamming the customer.
+* **Gateway State Verification**: Before execution, payment status is checked on Razorpay. If already `captured`, skips execution to prevent double-captures.
+* **Transition Checks**: Prevents invalid state machine transitions (e.g. executing on `RECOVERED` or `CLOSED` cases).
+
+---
+
+## Razorpay Integration
+* **Strict Test Mode Checks**: The system parses key prefixes on startup and rejects keys starting with `rzp_live_`. Only `rzp_test_` keys are allowed.
+* **Basic Auth**: Calls are made using Basic Auth securely over HTTPS.
+* **Signature Verification**: Webhooks check `X-Razorpay-Signature` against the raw payload using `RAZORPAY_WEBHOOK_SECRET` and HMAC-SHA256 to ensure authenticity.
+
+---
+
+## Revenue Recovery Measurement
+* **Revenue Recovered**: Programmatically computed as the sum of payment amounts for cases where a verified payment capture webhook (`payment.captured`) was processed.
+* **Bypassed Attempts**: Failed attempts, blocked cases, or policy escalations do **not** contribute to recovered revenue.
+
+---
+
+## Failure Handling
+* **API Timeout**: If the Razorpay API times out or returns an error, the attempt is marked as `FAILED`, and the case remains open/escalated.
+* **AI Provider Outage**: If the AI provider is unavailable, the pipeline falls back to `ESCALATE`, ensuring safe operations.
+* **Webhook Duplication**: Double webhook events are caught using a unique index constraint on `event_id` in the `webhook_events` collection.
+
+---
+
+## Demo
+
+Execute the deterministic console demo showcasing canonical success cases, safety blocks, API timeouts, and a 500-record batch simulation:
 ```bash
-# Requires setting GROQ_API_KEY in your .env
-PYTHONPATH=. python scripts/test_groq.py
-```
-
-
----
-
-## Phase 4: Razorpay Test Mode Recovery Execution
-
-Phase 4 integrates the system with the **Razorpay API in TEST MODE**. It provides a closed-loop execution layer that converts AI recommendations into gateway-level actions under strict safety limits.
-
-### Core Security & Execution Principles
-
-> [!IMPORTANT]
-> **Advisory Only AI**: The AI never directly calls Razorpay or performs financial operations. It only recommends actions.
-> **Safety Authorizer**: The PolicyEngine retains final auth approval (`ALLOW`).
-> **Execution Service**: A separate, deterministic execution layer (`RecoveryExecutor`) verifies limits, cooldowns, and gateway status before executing the permitted action on Razorpay Test API.
-> **Strict Test Mode Check**: Any key starting with `rzp_live_` is immediately rejected. The key MUST start with `rzp_test_`.
-
-### Safety Gates & Execution Boundaries
-
-The system enforces the following deterministic bounds server-side:
-* **Max Recovery Amount**: Maximum limit of ₹5,000 (`MAX_RECOVERY_AMOUNT_MINOR=500000`). If a payment exceeds this, it is blocked.
-* **Max Recovery Attempts**: A maximum of 2 recovery attempts per case (`MAX_RECOVERY_ATTEMPTS=2`). If reached, the case is escalated.
-* **Cooldown Period**: A cooldown of 5 minutes (`RECOVERY_COOLDOWN_SECONDS=300`) between attempts. If re-triggered too quickly, the action is blocked.
-* **State Verification**: Before execution, the current payment status is fetched from Razorpay. If it is already `captured`, the attempt is blocked to prevent double-captures.
-* **Idempotency**: Existing active actions (`VERIFICATION_REQUIRED` or `SUCCEEDED`) are re-used deterministically, preventing duplicate transaction creation.
-
-### Webhook Signature Verification
-
-The webhook endpoint `POST /webhooks/razorpay` verifies incoming events from the gateway:
-* The header `X-Razorpay-Signature` is verified against the raw request body using `RAZORPAY_WEBHOOK_SECRET` and HMAC-SHA256.
-* Idempotency is enforced by registering processed `event_id` keys in `webhook_events` collection.
-* Events update the matching case status (`CLOSED` on capture, or reset to `PENDING` on failure).
-
-### Metrics & Formulas
-
-* **Recovery Rate**: `successful_recoveries / eligible_cases`
-* **Revenue Recovered**: Sum of original transaction amounts for all successfully captured payments.
-* **Eligible Cases**: Cases evaluated as `AT_RISK` or `UNKNOWN`.
-
-### API Endpoints
-
-* **POST `/recovery/{case_id}/execute`**: Executes the recovery plan for a case.
-* **GET `/recovery/{case_id}/actions`**: Retrieve a history of execution attempts.
-* **GET `/recovery/{case_id}/status`**: Fetch case workflow and risk status.
-* **POST `/webhooks/razorpay`**: Gatekeeper webhook endpoint.
-
-### Manual Verification Script
-
-Verify your credentials and perform a harmless Test Mode Order creation:
-```bash
-# Requires setting RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env
-PYTHONPATH=. python scripts/test_razorpay_test_mode.py
-```
-
-### Command Execution
-
-#### 1. Seeding Synthetic Payments
-Generates a reproducible, structured batch of synthetic payments (with historical context) using a random seed:
-```bash
-# Dry run to see distribution
-python scripts/seed_data.py --count 500 --seed 42
-
-# Confirm writing to MongoDB database
-python scripts/seed_data.py --confirm --count 500 --seed 42
-```
-
-#### 2. Batch Risk Analysis
-Analyzes all seeded payment records and outputs a high-level revenue risk report:
-```bash
-python scripts/analyze_risk_batch.py
-```
-*(Sample counts/amounts may vary depending on seed parameter).*
-
-#### 3. Running Tests
-Run complete pytest suite covering models, guardrails, classification, history, and API routes:
-```bash
-pytest
-```
-
-
----
-
-## Phase 5: Revenue Recovery Evaluation & Judge Demo
-
-Phase 5 introduces the comprehensive **Evaluation and Demonstration Layer** for RecoverAI, enabling batch simulations, strict revenue metrics accounting, deterministic safety blocks, and an interactive frontend dashboard for judges.
-
-### Key Evaluation Metrics & Formulae
-* **Revenue Recovered**: Calculated exclusively from verified successfully captured payments on the gateway. AI recommendations, API request success, policy allowance, or order creations do **NOT** count towards recovered revenue:
-  $$\text{Revenue Recovered} = \sum \text{Amount of verified successful recovery payments}$$
-* **Revenue At Risk**:
-  $$\text{Revenue At Risk} = \sum \text{Amount of eligible unresolved payment failures}$$
-* **Revenue Recovery Rate**:
-  $$\text{Revenue Recovery Rate} = \frac{\text{Revenue Recovered}}{\text{Revenue At Risk}}$$
-* **Case Recovery Rate**:
-  $$\text{Case Recovery Rate} = \frac{\text{Successfully Recovered Cases}}{\text{Eligible Cases}}$$
-* **Policy Override Rate**:
-  $$\text{Policy Override Rate} = \frac{\text{AI recommendations overridden by Policy Engine}}{\text{Total AI decisions}}$$
-
-### Safety & Stopping Rules
-The system enforces deterministic stopping and escalation rules that cannot be bypassed by the LLM:
-* **STOP** if payment has already succeeded on the gateway.
-* **STOP** if the maximum attempt limit of 2 is exceeded (forces escalation).
-* **STOP** if the transaction amount exceeds ₹5,000.
-* **STOP** if the case state is unknown or ambiguous.
-* **STOP** if the cooldown period of 5 minutes has not elapsed.
-
-### Evaluation API Endpoints
-* **`POST /evaluations`**: Starts a deterministic batch evaluation run.
-* **`GET /evaluations/{evaluation_id}`**: Retrieves the aggregated run statistics.
-* **`GET /evaluations/{evaluation_id}/metrics`**: Retrieves charts data (funnel stages, outcome distributions, AI recommendations).
-* **`GET /evaluations/{evaluation_id}/cases`**: Retrieves paginated tabular results for individual cases.
-
-### Command Line Demo Runner
-Run a deterministic evaluation run of 500 records offline:
-```bash
-PYTHONPATH=. python scripts/run_demo.py
-```
-This script runs entirely offline (using in-memory `MockDatabase` if MongoDB Atlas is not configured) and prints a formatted summary in Indian Rupees.
-
-### Launching the Dashboard Frontend
-1. Start the FastAPI backend:
-   ```bash
-   uvicorn app.main:app --reload
-   ```
-2. Navigate to the frontend directory, install dependencies, and start the development server:
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-3. Open [http://localhost:5173](http://localhost:5173) in your browser. The dashboard displays:
-   * Large KPI cards for revenue metrics.
-   * Funnel chart visualization.
-   * Outcome and AI decision distributions.
-   * Step-by-step case timelines with audit trails.
-   * Interactive failure scenario simulators (unknown payment state blocks & API gateway timeouts).
-
----
-
-## Architecture Diagram
-
-The backend foundation uses a clean separation of concerns:
-
-```mermaid
-graph TD
-    Client[Client / Webhook] -->|GET /health| API[FastAPI App]
-    API -->|DI| DB[MongoDB Layer]
-    API -->|DI| AI[AI Provider Abstraction]
-    API -->|DI| Policy[Deterministic Policy Engine]
-    
-    subgraph AI Service
-        AI -->|Select Provider| Groq[GroqProvider]
-        AI -->|Select Provider| Mock[MockAIProvider]
-    end
-    
-    subgraph Guardrails
-        Policy -->|Rules check| Rules[MaxAmountRule / MinConfidenceRule]
-    end
+PYTHONPATH=. python scripts/final_demo.py
 ```
 
 ---
 
-## Setup & Execution
+## Setup
 
-### 1. Clone the repository
-```bash
-git clone https://github.com/vikrambommanvb/Recover-AI-RAZORPAY.git
-cd RecoverAI
-```
-
-### 2. Set up virtual environment
+### 1. Set up virtual environment
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-### 3. Install dependencies
-```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure environment
-Copy the configuration template and customize the values:
-```bash
-cp .env.example .env
+### 2. Configure environment
+Create a `.env` file in the root directory:
+```env
+APP_NAME=RecoverAI
+APP_ENV=development
+APP_MODE=demo
+DEBUG=true
+
+MONGODB_URI=mongodb+srv://recovery:<db_password>@cluster0.kpvcp2f.mongodb.net/?appName=Cluster0
+MONGODB_DATABASE=recoverai
+
+AI_PROVIDER=mock
+GROQ_API_KEY=
+GROQ_MODEL=mixtral-8x7b-32768
+
+RAZORPAY_KEY_ID=rzp_test_TUOltC7Y41TnAV
+RAZORPAY_KEY_SECRET=d6lNv2aGIV057A9MHv05Gdoe
+RAZORPAY_WEBHOOK_SECRET=super_secret_webhook_token
 ```
 
-### 5. Start the backend server
-Start the FastAPI server locally:
+### 3. Start Backend Server
 ```bash
 uvicorn app.main:app --reload
 ```
+API Documentation will be available at: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-Swagger API documentation will be available at: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+### 4. Start React Frontend Dashboard
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open [http://localhost:5173](http://localhost:5173) in your browser to explore the dashboard.
 
 ---
 
 ## Environment Variables
 
-| Variable | Description | Default / Example |
+| Variable | Description | Default |
 | :--- | :--- | :--- |
-| `APP_NAME` | Name of the FastAPI application | `RecoverAI` |
-| `APP_ENV` | Running environment (development / production / testing) | `development` |
-| `DEBUG` | Enable verbose error outputs and logs | `true` |
-| `MONGODB_URI` | Connection string for MongoDB Atlas | `mongodb+srv://...` |
-| `MONGODB_DATABASE` | Targeted database name | `recoverai` |
-| `AI_PROVIDER` | Targeted AI model engine provider (`groq` or `mock`) | `groq` |
-| `GROQ_API_KEY` | API Key for Groq Cloud services | `gsk_...` |
-| `GROQ_MODEL` | Groq LLM model name | `mixtral-8x7b-32768` |
-| `RAZORPAY_KEY_ID` | Razorpay Test Mode Key ID | *Optional for health check* |
-| `RAZORPAY_KEY_SECRET` | Razorpay Test Mode Secret Key | *Optional for health check* |
+| `APP_MODE` | Application Mode (`demo` or `test`) | `demo` |
+| `AI_PROVIDER` | AI provider abstraction (`mock` or `groq`) | `mock` |
+| `MONGODB_URI` | MongoDB Atlas Connection string | `mongodb+srv://...` |
+| `RAZORPAY_KEY_ID` | Razorpay Test Key ID | `rzp_test_...` |
+| `RAZORPAY_KEY_SECRET` | Razorpay Test Key Secret | `d6lN...` |
 
 ---
 
-## Testing
-
-Execute tests using `pytest` inside the virtual environment:
-```bash
-pytest
+## Project Structure
 ```
+app/
+    api/         # Routers and dependency injectors
+    core/        # Configuration and logging configurations
+    db/          # MongoDB configurations and in-memory fallbacks
+    guardrails/  # Policy Engine and deterministic safety rules
+    models/      # Pydantic schemas (Payment, Case, Action, Webhook)
+    services/    # Logic (Risk Service, Executor, Evaluation Service)
+scripts/         # Demo runners and manual test tools
+tests/           # Pytest unit and integration test suite
+frontend/        # React + Vite dashboard frontend application
+```
+
+---
+
+## Design Decisions
+* **Minor Financial Units**: All financial computations are done in minor units (paise) to prevent floating-point representation bugs.
+* **Advisory AI**: Designed as an advisor to the Policy Engine. This prevents AI hallucination or malicious injection from compromising gateway authorizations.
+* **Offline Mock Database**: We implement a production-grade in-memory database mock fallback. If the network or credentials fail on MongoDB Atlas, the system automatically runs locally without raising crashes.
+
+---
+
+## What Broke
+* **Database TLS Handshake Failure**: During local testing, corporate firewalls or missing OS Python certificates caused TLS alert handshake failures. We solved this by implementing an automatic `MockDatabase` fallback on connection failure.
+* **Shared Test client overrides**: The FastAPI `TestClient` uses a global dependency override mapping. When tests ran in parallel, overrides from one file bled into another. We resolved this by standardizing and importing DRY `MockDatabase` instances across the test suite.
+
+---
+
+## Limitations
+* **Test Mode Only**: Designed strictly for Test Mode (`rzp_test_`). Real payment transactions (`rzp_live_`) are blocked at the code level.
+* **Simulated Checkouts**: Customer payment links are simulated. Real-world recovery rates will depend on customer behavior and latency.
+
+---
+
+## Future Improvements
+* **Active SMS/Email Routing**: Integrate Twilio or SendGrid to send actual retry payment links directly to customers.
+* **Real-time Webhook Tunneling**: Set up local webhook tunnels (e.g. ngrok) to test automated captured state transitions directly from Razorpay dashboard webhooks.

@@ -61,14 +61,16 @@ class RecoveryExecutor:
         if not case:
             raise ValueError(f"Recovery case with ID '{case_id}' not found.")
             
-        if case.final_status == "closed" or case.status == "CLOSED":
-            # If case is already closed, reject execution
-            raise ValueError(f"Recovery case '{case_id}' is already closed.")
-
         # 2. Load Payment
         payment = await PaymentService.get_payment_by_id(db, case.payment_id)
         if not payment:
             raise ValueError(f"Payment with ID '{case.payment_id}' not found.")
+
+        # State transition validation check: Prevent resolved/closed/recovered states from re-executing
+        if (case.final_status == "closed" or 
+            case.status in ["CLOSED", "RECOVERED", "SUCCEEDED"] or 
+            payment.status == "captured"):
+            raise ValueError(f"State Machine Error: Invalid transition from RESOLVED/CLOSED to EXECUTING for case '{case_id}'.")
 
         # 3. Load latest AI Decision
         cursor = db[AGENT_DECISIONS_COLLECTION].find({"case_id": case_id, "is_latest": True}).limit(1)
