@@ -74,7 +74,8 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
             "error": {
                 "code": f"HTTP_ERROR_{exc.status_code}",
                 "message": exc.detail
-            }
+            },
+            "detail": exc.detail
         }
     )
 
@@ -88,7 +89,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 "code": "VALIDATION_FAILED",
                 "message": "The request payload failed schema validation.",
                 "details": exc.errors()
-            }
+            },
+            "detail": str(exc.errors())
         }
     )
 
@@ -102,7 +104,8 @@ async def generic_exception_handler(request: Request, exc: Exception):
             "error": {
                 "code": "INTERNAL_SERVER_ERROR",
                 "message": "An unexpected server error occurred. Please check logs."
-            }
+            },
+            "detail": str(exc)
         }
     )
 

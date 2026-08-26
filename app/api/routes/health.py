@@ -5,7 +5,7 @@ from app.db.mongodb import db
 router = APIRouter()
 
 
-@router.get("")
+@router.get("/")
 async def root():
     return {
         "title": settings.APP_NAME,
@@ -40,7 +40,9 @@ async def health_check():
         "status": "ok" if is_healthy else "degraded",
         "database": db_status,
         "ai_provider": settings.AI_PROVIDER,
-        "razorpay_mode": "test"
+        "razorpay_mode": "test",
+        "service": settings.APP_NAME,
+        "environment": settings.APP_ENV
     }
 
 
