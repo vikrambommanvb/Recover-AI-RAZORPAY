@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     # Razorpay Settings
     RAZORPAY_KEY_ID: Optional[str] = Field(default=None, description="Razorpay API key ID")
     RAZORPAY_KEY_SECRET: Optional[str] = Field(default=None, description="Razorpay API key secret")
+    RAZORPAY_WEBHOOK_SECRET: Optional[str] = Field(default=None, description="Razorpay webhook secret")
+
+    # Safety Bounds Settings
+    MAX_RECOVERY_AMOUNT_MINOR: int = Field(default=500000, description="Max recovery amount in minor units (default ₹5,000)")
+    MAX_RECOVERY_ATTEMPTS: int = Field(default=2, description="Max recovery attempts allowed per case")
+    RECOVERY_COOLDOWN_SECONDS: int = Field(default=300, description="Cooldown duration in seconds between attempts")
+
 
     model_config = SettingsConfigDict(
         env_file=".env",

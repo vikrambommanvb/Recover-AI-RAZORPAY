@@ -25,6 +25,23 @@ class MockCursor:
     def limit(self, n):
         self.data = self.data[:n]
         return self
+
+    def sort(self, key_or_list, direction=None):
+        if isinstance(key_or_list, list):
+            sort_key = key_or_list[0][0]
+            reverse = key_or_list[0][1] == -1
+        else:
+            sort_key = key_or_list
+            reverse = direction == -1
+            
+        def get_sort_val(x):
+            val = x.get(sort_key)
+            if val is None:
+                return ""
+            return val
+
+        self.data.sort(key=get_sort_val, reverse=reverse)
+        return self
         
     def __aiter__(self):
         return self
@@ -37,22 +54,45 @@ class MockCursor:
         else:
             raise StopAsyncIteration
 
+
 class MockCollection:
     def __init__(self):
         self.docs = []
         
+    def _matches_filter(self, doc, filter):
+        for k, v in filter.items():
+            if "." in k:
+                parts = k.split(".")
+                val = doc
+                for part in parts:
+                    if isinstance(val, dict):
+                        val = val.get(part)
+                    else:
+                        val = None
+            else:
+                val = doc.get(k)
+
+            if isinstance(v, dict):
+                if "$in" in v:
+                    if val not in v["$in"]:
+                        return False
+                elif "$lt" in v:
+                    if val is None or val >= v["$lt"]:
+                        return False
+                elif "$gt" in v:
+                    if val is None or val <= v["$gt"]:
+                        return False
+                else:
+                    if val != v:
+                        return False
+            else:
+                if val != v:
+                    return False
+        return True
+
     async def find_one(self, filter):
         for doc in self.docs:
-            match = True
-            for k, v in filter.items():
-                if k == "created_at" and isinstance(v, dict) and "$lt" in v:
-                    if doc.get(k) >= v["$lt"]:
-                        match = False
-                        break
-                elif doc.get(k) != v:
-                    match = False
-                    break
-            if match:
+            if self._matches_filter(doc, filter):
                 return doc
         return None
         
@@ -60,16 +100,7 @@ class MockCollection:
         filter = filter or {}
         matched = []
         for doc in self.docs:
-            match = True
-            for k, v in filter.items():
-                if k == "created_at" and isinstance(v, dict) and "$lt" in v:
-                    if doc.get(k) >= v["$lt"]:
-                        match = False
-                        break
-                elif doc.get(k) != v:
-                    match = False
-                    break
-            if match:
+            if self._matches_filter(doc, filter):
                 matched.append(doc)
         return MockCursor(matched)
         
@@ -97,12 +128,7 @@ class MockCollection:
         set_dict = update.get("$set", {})
         count = 0
         for doc in self.docs:
-            match = True
-            for k, v in filter.items():
-                if doc.get(k) != v:
-                    match = False
-                    break
-            if match:
+            if self._matches_filter(doc, filter):
                 doc.update(set_dict)
                 count += 1
         return count
@@ -110,25 +136,10 @@ class MockCollection:
     async def count_documents(self, filter):
         count = 0
         for doc in self.docs:
-            match = True
-            for k, v in filter.items():
-                if "." in k:
-                    parts = k.split(".")
-                    val = doc
-                    for part in parts:
-                        if isinstance(val, dict):
-                            val = val.get(part)
-                        else:
-                            val = None
-                    if val != v:
-                        match = False
-                elif doc.get(k) != v:
-                    match = False
-                if not match:
-                    break
-            if match:
+            if self._matches_filter(doc, filter):
                 count += 1
         return count
+
 
 
 class MockDatabase:

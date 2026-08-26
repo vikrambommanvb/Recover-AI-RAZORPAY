@@ -153,6 +153,58 @@ You can run a manual test using the real Groq API:
 PYTHONPATH=. python scripts/test_groq.py
 ```
 
+
+---
+
+## Phase 4: Razorpay Test Mode Recovery Execution
+
+Phase 4 integrates the system with the **Razorpay API in TEST MODE**. It provides a closed-loop execution layer that converts AI recommendations into gateway-level actions under strict safety limits.
+
+### Core Security & Execution Principles
+
+> [!IMPORTANT]
+> **Advisory Only AI**: The AI never directly calls Razorpay or performs financial operations. It only recommends actions.
+> **Safety Authorizer**: The PolicyEngine retains final auth approval (`ALLOW`).
+> **Execution Service**: A separate, deterministic execution layer (`RecoveryExecutor`) verifies limits, cooldowns, and gateway status before executing the permitted action on Razorpay Test API.
+> **Strict Test Mode Check**: Any key starting with `rzp_live_` is immediately rejected. The key MUST start with `rzp_test_`.
+
+### Safety Gates & Execution Boundaries
+
+The system enforces the following deterministic bounds server-side:
+* **Max Recovery Amount**: Maximum limit of ₹5,000 (`MAX_RECOVERY_AMOUNT_MINOR=500000`). If a payment exceeds this, it is blocked.
+* **Max Recovery Attempts**: A maximum of 2 recovery attempts per case (`MAX_RECOVERY_ATTEMPTS=2`). If reached, the case is escalated.
+* **Cooldown Period**: A cooldown of 5 minutes (`RECOVERY_COOLDOWN_SECONDS=300`) between attempts. If re-triggered too quickly, the action is blocked.
+* **State Verification**: Before execution, the current payment status is fetched from Razorpay. If it is already `captured`, the attempt is blocked to prevent double-captures.
+* **Idempotency**: Existing active actions (`VERIFICATION_REQUIRED` or `SUCCEEDED`) are re-used deterministically, preventing duplicate transaction creation.
+
+### Webhook Signature Verification
+
+The webhook endpoint `POST /webhooks/razorpay` verifies incoming events from the gateway:
+* The header `X-Razorpay-Signature` is verified against the raw request body using `RAZORPAY_WEBHOOK_SECRET` and HMAC-SHA256.
+* Idempotency is enforced by registering processed `event_id` keys in `webhook_events` collection.
+* Events update the matching case status (`CLOSED` on capture, or reset to `PENDING` on failure).
+
+### Metrics & Formulas
+
+* **Recovery Rate**: `successful_recoveries / eligible_cases`
+* **Revenue Recovered**: Sum of original transaction amounts for all successfully captured payments.
+* **Eligible Cases**: Cases evaluated as `AT_RISK` or `UNKNOWN`.
+
+### API Endpoints
+
+* **POST `/recovery/{case_id}/execute`**: Executes the recovery plan for a case.
+* **GET `/recovery/{case_id}/actions`**: Retrieve a history of execution attempts.
+* **GET `/recovery/{case_id}/status`**: Fetch case workflow and risk status.
+* **POST `/webhooks/razorpay`**: Gatekeeper webhook endpoint.
+
+### Manual Verification Script
+
+Verify your credentials and perform a harmless Test Mode Order creation:
+```bash
+# Requires setting RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env
+PYTHONPATH=. python scripts/test_razorpay_test_mode.py
+```
+
 ### Command Execution
 
 #### 1. Seeding Synthetic Payments

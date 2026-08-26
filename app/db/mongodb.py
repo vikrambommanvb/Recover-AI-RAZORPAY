@@ -50,7 +50,9 @@ class Database:
                 PAYMENTS_COLLECTION, 
                 RECOVERY_CASES_COLLECTION,
                 AGENT_DECISIONS_COLLECTION,
-                AUDIT_LOGS_COLLECTION
+                AUDIT_LOGS_COLLECTION,
+                RECOVERY_ACTIONS_COLLECTION,
+                WEBHOOK_EVENTS_COLLECTION
             )
             logger.info("Initializing database indexes...")
             # Unique index on payment_id
@@ -69,6 +71,12 @@ class Database:
             # Indexes on audit logs
             await self.db[AUDIT_LOGS_COLLECTION].create_index("entity_id")
             await self.db[AUDIT_LOGS_COLLECTION].create_index("timestamp")
+            # Indexes on recovery actions
+            await self.db[RECOVERY_ACTIONS_COLLECTION].create_index("action_id", unique=True)
+            await self.db[RECOVERY_ACTIONS_COLLECTION].create_index("case_id")
+            await self.db[RECOVERY_ACTIONS_COLLECTION].create_index("payment_id")
+            # Indexes on webhook events
+            await self.db[WEBHOOK_EVENTS_COLLECTION].create_index("event_id", unique=True)
             logger.info("Database indexes successfully initialized.")
         except Exception as e:
             logger.error(f"Failed to create database indexes: {e}")
