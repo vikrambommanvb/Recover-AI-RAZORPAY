@@ -6,6 +6,7 @@ from app.db.mongodb import db
 from app.api.routes import health
 from app.api.routes.payments import router as payments_router
 from app.api.routes.risk import router as risk_router
+from app.api.routes.recovery import router as recovery_router
 
 # Setup logging configuration on initialization
 setup_logging()
@@ -33,4 +34,6 @@ app = FastAPI(
 app.include_router(health.router)
 app.include_router(payments_router, prefix="/payments", tags=["payments"])
 app.include_router(risk_router, prefix="/risk", tags=["risk"])
+app.include_router(recovery_router, prefix="/recovery", tags=["recovery"])
+
 

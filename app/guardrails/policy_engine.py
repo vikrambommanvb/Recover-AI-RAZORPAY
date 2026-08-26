@@ -3,7 +3,7 @@ from enum import Enum
 from typing import List
 from pydantic import BaseModel, Field
 from app.models.payment import Payment
-from app.models.agent_decision import AgentDecision
+from app.models.agent_decision import AgentDecision, RecoveryAction
 
 
 class PolicyDecision(str, Enum):
@@ -16,6 +16,7 @@ class GuardrailResponse(BaseModel):
     """Result of deterministic policy engine evaluation."""
     decision: PolicyDecision = Field(..., description="Engine result: ALLOW, BLOCK, ESCALATE")
     reason: str = Field(..., description="Summary explanation of the decision")
+    rules_checked: List[str] = Field(default_factory=list, description="List of all rule names evaluated")
     triggered_rules: List[str] = Field(default_factory=list, description="List of rule names triggered")
 
 
@@ -53,10 +54,11 @@ class MaxAmountRule(PolicyRule):
 
 
 class MinConfidenceRule(PolicyRule):
-    """Block actions if the AI agent's confidence score is too low."""
+    """Block or Escalate actions if the AI agent's confidence score is too low."""
 
-    def __init__(self, min_confidence: float = 0.60):
+    def __init__(self, min_confidence: float = 0.60, action: PolicyDecision = PolicyDecision.BLOCK):
         self.min_confidence = min_confidence
+        self.action = action
 
     @property
     def name(self) -> str:
@@ -64,7 +66,61 @@ class MinConfidenceRule(PolicyRule):
 
     def evaluate(self, payment: Payment, decision: AgentDecision) -> PolicyDecision:
         if decision.confidence < self.min_confidence:
-            return PolicyDecision.BLOCK
+            return self.action
+        return PolicyDecision.ALLOW
+
+
+class PaymentStatusRule(PolicyRule):
+    """Block actions if the payment status is successful or unknown."""
+
+    @property
+    def name(self) -> str:
+        return "PAYMENT_STATUS_CHECK"
+
+    def evaluate(self, payment: Payment, decision: AgentDecision) -> PolicyDecision:
+        status = payment.status.lower() if payment.status else ""
+        
+        # Prevent actions on already successful payments
+        if status in ["captured", "authorized", "successful", "success"]:
+            if decision.action in [RecoveryAction.RETRY, RecoveryAction.REMIND]:
+                return PolicyDecision.BLOCK
+                
+        # Prevent retry or remind if status is unknown/empty
+        elif status in ["unknown", ""]:
+            if decision.action in [RecoveryAction.RETRY, RecoveryAction.REMIND]:
+                return PolicyDecision.BLOCK
+                
+        return PolicyDecision.ALLOW
+
+
+class RetryLimitRule(PolicyRule):
+    """Block retry actions if the retry count exceeds the limit."""
+
+    def __init__(self, max_retries: int = 3):
+        self.max_retries = max_retries
+
+    @property
+    def name(self) -> str:
+        return "RETRY_LIMIT_CHECK"
+
+    def evaluate(self, payment: Payment, decision: AgentDecision) -> PolicyDecision:
+        if decision.action == RecoveryAction.RETRY:
+            retry_count = payment.metadata.get("retry_count", 0)
+            if retry_count >= self.max_retries:
+                return PolicyDecision.BLOCK
+        return PolicyDecision.ALLOW
+
+
+class EscalationRule(PolicyRule):
+    """Escalate if the AI recommends ESCALATE."""
+
+    @property
+    def name(self) -> str:
+        return "AI_RECOMMENDED_ESCALATION"
+
+    def evaluate(self, payment: Payment, decision: AgentDecision) -> PolicyDecision:
+        if decision.action == RecoveryAction.ESCALATE:
+            return PolicyDecision.ESCALATE
         return PolicyDecision.ALLOW
 
 
@@ -75,22 +131,27 @@ class PolicyEngine:
     Verifies AI agent decisions against hard-coded business safety policies 
     before authorizing any payment system operations.
     """
-
+    
     def __init__(self, rules: List[PolicyRule] = None):
         if rules is None:
             # Register default safety rules
             self.rules = [
                 MaxAmountRule(),
-                MinConfidenceRule()
+                MinConfidenceRule(),
+                PaymentStatusRule(),
+                RetryLimitRule(),
+                EscalationRule()
             ]
         else:
             self.rules = rules
 
     def evaluate(self, payment: Payment, decision: AgentDecision) -> GuardrailResponse:
         triggered = []
+        checked = []
         final_decision = PolicyDecision.ALLOW
 
         for rule in self.rules:
+            checked.append(rule.name)
             rule_decision = rule.evaluate(payment, decision)
             if rule_decision != PolicyDecision.ALLOW:
                 triggered.append(rule.name)
@@ -110,5 +171,7 @@ class PolicyEngine:
         return GuardrailResponse(
             decision=final_decision,
             reason=reason,
+            rules_checked=checked,
             triggered_rules=triggered
         )
+

@@ -89,6 +89,48 @@ class MockCollection:
             inserted_ids = [doc.get("payment_id") for doc in docs]
         return InsertResult()
 
+    async def insert_one(self, doc):
+        self.docs.append(doc)
+        return None
+
+    async def update_many(self, filter, update):
+        set_dict = update.get("$set", {})
+        count = 0
+        for doc in self.docs:
+            match = True
+            for k, v in filter.items():
+                if doc.get(k) != v:
+                    match = False
+                    break
+            if match:
+                doc.update(set_dict)
+                count += 1
+        return count
+
+    async def count_documents(self, filter):
+        count = 0
+        for doc in self.docs:
+            match = True
+            for k, v in filter.items():
+                if "." in k:
+                    parts = k.split(".")
+                    val = doc
+                    for part in parts:
+                        if isinstance(val, dict):
+                            val = val.get(part)
+                        else:
+                            val = None
+                    if val != v:
+                        match = False
+                elif doc.get(k) != v:
+                    match = False
+                if not match:
+                    break
+            if match:
+                count += 1
+        return count
+
+
 class MockDatabase:
     def __init__(self):
         self.collections = {}

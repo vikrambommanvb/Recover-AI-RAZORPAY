@@ -46,7 +46,12 @@ class Database:
             logger.warning("Database not connected. Cannot initialize indexes.")
             return
         try:
-            from app.db.collections import PAYMENTS_COLLECTION, RECOVERY_CASES_COLLECTION
+            from app.db.collections import (
+                PAYMENTS_COLLECTION, 
+                RECOVERY_CASES_COLLECTION,
+                AGENT_DECISIONS_COLLECTION,
+                AUDIT_LOGS_COLLECTION
+            )
             logger.info("Initializing database indexes...")
             # Unique index on payment_id
             await self.db[PAYMENTS_COLLECTION].create_index("payment_id", unique=True)
@@ -58,6 +63,12 @@ class Database:
             await self.db[RECOVERY_CASES_COLLECTION].create_index("case_id", unique=True)
             # Index on status
             await self.db[RECOVERY_CASES_COLLECTION].create_index("status")
+            # Indexes on agent decisions
+            await self.db[AGENT_DECISIONS_COLLECTION].create_index("case_id")
+            await self.db[AGENT_DECISIONS_COLLECTION].create_index("payment_id")
+            # Indexes on audit logs
+            await self.db[AUDIT_LOGS_COLLECTION].create_index("entity_id")
+            await self.db[AUDIT_LOGS_COLLECTION].create_index("timestamp")
             logger.info("Database indexes successfully initialized.")
         except Exception as e:
             logger.error(f"Failed to create database indexes: {e}")
