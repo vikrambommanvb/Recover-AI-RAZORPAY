@@ -78,6 +78,35 @@ The system enforces deterministic guardrails that cannot be bypassed by the LLM:
 * **Basic Auth**: Calls are made using Basic Auth securely over HTTPS.
 * **Signature Verification**: Webhooks check `X-Razorpay-Signature` against the raw payload using `RAZORPAY_WEBHOOK_SECRET` and HMAC-SHA256 to ensure authenticity.
 
+## Phase 6: End-to-End Recovery Pipeline Architecture
+
+RecoverAI implements a robust, deterministic, and safe end-to-end recovery pipeline structured as follows:
+
+```mermaid
+graph TD
+    A[Raw Payment Failure] --> B[Revenue Risk Detector]
+    B --> C[Root Cause Classifier]
+    C --> D[AI Advisor Recommendation]
+    D --> E[Deterministic Policy Engine]
+    E --> F{ALLOW?}
+    F -- No --> G[BLOCK / ESCALATE]
+    F -- Yes --> H[Razorpay Client Test Mode Order]
+    H --> I[Payment Link/Retry Sent]
+    I --> J[Gateway Verification Check]
+    J --> K{Status captured?}
+    K -- Yes --> L[VERIFIED_SUCCESS: Increment Recovered Revenue]
+    K -- No --> M[VERIFIED_FAILURE / UNKNOWN]
+```
+
+### Pipeline Stages
+1. **Detection**: The `RevenueRiskDetector` checks the `NormalizedPayment` state and determines if it is eligible for recovery (e.g. FAILED or AUTHORIZED).
+2. **Classification**: The `RootCauseClassifier` maps error descriptions to one of 7 standardized root cause codes (e.g., `NETWORK_TIMEOUT`, `BANK_DECLINE`).
+3. **AI Recommendation**: The AI Provider suggests an intervention (RETRY, REMIND, STOP, ESCALATE, NO_ACTION) with a confidence score.
+4. **Deterministic Policy Gate**: The `PolicyEngine` evaluates the payment and the AI recommendation against safety guardrails. Low confidence or high amounts trigger `ESCALATE`.
+5. **Bounded Execution**: The `RecoveryExecutor` handles allowed actions, checking cooldowns, retry limits (MAX_RECOVERY_ATTEMPTS = 3), and preventing duplicates (idempotency).
+6. **Verification**: Post-attempt, the gateway is queried to verify if the payment transitioned to `captured`, producing `VERIFIED_SUCCESS` (incrementing recovered revenue), `VERIFIED_FAILURE`, or `UNKNOWN`.
+7. **Audit & Traceability**: MongoDB persists complete lifecycle events tagged with the unique `case_id` for full audit trails.
+
 ---
 
 ## Revenue Recovery Measurement

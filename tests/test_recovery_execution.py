@@ -217,8 +217,9 @@ def test_execute_attempt_limit_escalated(test_client, mock_rzp):
     }
     mock_db[AGENT_DECISIONS_COLLECTION].docs.append(decision)
 
-    # Seed 2 prior triggered attempts
-    for i in range(2):
+    # Seed prior triggered attempts
+    from app.core.config import settings
+    for i in range(settings.MAX_RECOVERY_ATTEMPTS):
         action = RecoveryAction(
             action_id=f"act_prev_{i}",
             case_id="case_retry",

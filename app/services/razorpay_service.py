@@ -47,6 +47,24 @@ class RazorpayService:
                 response.raise_for_status()
             return response.json()
 
+    async def get_payment(self, payment_id: str):
+        """Adapter for Phase 6 NormalizedPayment compatibility."""
+        res = await self.fetch_payment(payment_id)
+        from app.integrations.razorpay_client import NormalizedPayment
+        from datetime import datetime, timezone
+        status_upper = res.get("status", "").upper()
+        return NormalizedPayment(
+            payment_id=res.get("id") or payment_id,
+            order_id=res.get("order_id"),
+            amount_minor=res.get("amount") or 0,
+            currency=res.get("currency", "INR"),
+            status="CAPTURED" if status_upper == "CAPTURED" else ("REFUNDED" if status_upper == "REFUNDED" else ("AUTHORIZED" if status_upper == "AUTHORIZED" else ("FAILED" if status_upper == "FAILED" else "UNKNOWN"))),
+            method=res.get("method", "card"),
+            created_at=datetime.now(timezone.utc),
+            captured=res.get("status") == "captured",
+            failure_reason=res.get("error_description") or res.get("error_reason")
+        )
+
     async def fetch_order(self, order_id: str) -> Dict[str, Any]:
         """Fetch order details from Razorpay Orders API."""
         auth = self._get_auth()

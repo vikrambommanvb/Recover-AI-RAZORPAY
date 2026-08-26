@@ -78,17 +78,24 @@ class PaymentStatusRule(PolicyRule):
         return "PAYMENT_STATUS_CHECK"
 
     def evaluate(self, payment: Payment, decision: AgentDecision) -> PolicyDecision:
-        status = payment.status.lower() if payment.status else ""
+        # Prevent actions on missing payment ID
+        if not payment.payment_id:
+            return PolicyDecision.BLOCK
+            
+        # Prevent actions on invalid/negative amounts
+        if payment.amount is None or payment.amount <= 0:
+            return PolicyDecision.BLOCK
+
+        status = (payment.status or "").lower()
         
         # Prevent actions on already successful payments
         if status in ["captured", "authorized", "successful", "success"]:
             if decision.action in [RecoveryAction.RETRY, RecoveryAction.REMIND]:
                 return PolicyDecision.BLOCK
                 
-        # Prevent retry or remind if status is unknown/empty
+        # Prevent actions if status is unknown/empty
         elif status in ["unknown", ""]:
-            if decision.action in [RecoveryAction.RETRY, RecoveryAction.REMIND]:
-                return PolicyDecision.BLOCK
+            return PolicyDecision.BLOCK
                 
         return PolicyDecision.ALLOW
 

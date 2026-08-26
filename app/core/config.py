@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     # Safety Bounds Settings
     MAX_RECOVERY_AMOUNT_MINOR: int = Field(default=500000, description="Max recovery amount in minor units (default ₹5,000)")
-    MAX_RECOVERY_ATTEMPTS: int = Field(default=2, description="Max recovery attempts allowed per case")
+    MAX_RECOVERY_ATTEMPTS: int = Field(default=3, description="Max recovery attempts allowed per case")
     RECOVERY_COOLDOWN_SECONDS: int = Field(default=300, description="Cooldown duration in seconds between attempts")
 
 

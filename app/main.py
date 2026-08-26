@@ -115,6 +115,7 @@ app.include_router(health.router)
 app.include_router(payments_router, prefix="/payments", tags=["payments"])
 app.include_router(risk_router, prefix="/risk", tags=["risk"])
 app.include_router(recovery_router, prefix="/recovery", tags=["recovery"])
+app.include_router(recovery_router, prefix="/api/recovery", tags=["recovery"])
 app.include_router(webhooks_router, prefix="/webhooks", tags=["webhooks"])
 app.include_router(evaluations_router, prefix="/evaluations", tags=["evaluations"])
 

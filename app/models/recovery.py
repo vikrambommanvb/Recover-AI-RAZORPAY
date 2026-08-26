@@ -3,12 +3,26 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+class RevenueRiskCase(BaseModel):
+    """
+    RevenueRiskCase Model.
+    Represents the output from the RevenueRiskDetector.
+    """
+    case_id: str = Field(..., description="Unique case identifier")
+    payment_id: str = Field(..., description="Reference to the payment")
+    amount_minor: int = Field(..., description="Payment amount in minor units (paise)")
+    currency: str = Field("INR", description="3-letter currency code")
+    risk_type: str = Field(..., description="E.g., PAYMENT_FAILED, PAYMENT_TIMEOUT, CHECKOUT_ABANDONED, SUBSCRIPTION_PAYMENT_FAILED, UNKNOWN")
+    root_cause: str = Field(..., description="Root cause classified category")
+    detected_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    retry_count: int = Field(0, description="Number of recovery retries attempted")
+    eligibility: bool = Field(..., description="True if eligible for recovery")
+    reason: str = Field(..., description="Justification explanation")
+
+
 class RecoveryCase(BaseModel):
     """
     RecoveryCase Model representing a revenue-recovery case.
-    
-    Design Decision: Financial amounts (amount_at_risk) are represented as integers
-    in minor units (paise) to prevent floating-point calculation errors.
     """
     case_id: str = Field(..., description="Unique identifier for the recovery case")
     payment_id: str = Field(..., description="Reference to the failed payment")
@@ -38,3 +52,10 @@ class RecoveryCase(BaseModel):
     )
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    # Phase 6 Extended fields for backward/forward compatibility
+    risk_type: str = Field("UNKNOWN", description="Classification of risk type")
+    detected_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    retry_count: int = Field(0, description="Total attempts executed")
+    eligibility: bool = Field(False, description="Eligibility flag")
+    reason: Optional[str] = Field(None, description="Reasoning text")

@@ -1,1 +1,124 @@
-/* index.css cleared for Tailwind CDN */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: 'Inter', sans-serif;
+  --font-display: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Colors */
+  --bg-primary: #080B11;
+  --bg-secondary: #0F131D;
+  --bg-tertiary: #141A27;
+  
+  --border-color: #1F2937;
+  --border-highlight: #374151;
+
+  --accent-color: #2B6CB0;
+  --accent-glow: rgba(43, 108, 176, 0.15);
+
+  /* Semantic status colors */
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #F43F5E;
+  --color-blocked: #6366F1;
+  --color-pending: #9CA3AF;
+  --color-unknown: #8B5CF6;
+  --color-escalated: #EC4899;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-primary);
+  color: #F3F4F6;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-highlight);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4B5563;
+}
+
+/* Custom animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseBorder {
+  0% {
+    border-color: var(--border-color);
+  }
+  50% {
+    border-color: var(--accent-color);
+  }
+  100% {
+    border-color: var(--border-color);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.pulse-border {
+  animation: pulseBorder 2s infinite ease-in-out;
+}
+
+/* Typography Helpers */
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Layout helpers */
+.fintech-panel {
+  background-color: var(--bg-secondary);
+  border: 1px border var(--border-color);
+  border-radius: 12px;
+}
+
+/* Accessibility outline */
+*:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-delay: 0s !important;
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -2,10 +2,13 @@ from datetime import datetime, timezone
 from typing import Optional, Tuple, List
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models.payment import Payment
-from app.models.recovery import RecoveryCase
+from app.models.recovery import RecoveryCase, RevenueRiskCase
 from app.services.payment_service import PaymentService
 from app.db.collections import RECOVERY_CASES_COLLECTION
 from app.core.logging import logger
+from app.integrations.razorpay_client import NormalizedPayment
+from app.services.payment_state_verifier import PaymentStateVerifier
+from app.services.root_cause_classifier import RootCauseClassifier
 
 class RiskService:
     @staticmethod
@@ -108,3 +111,47 @@ class RiskService:
         )
         logger.info(f"Created new recovery case '{case_id}' for payment '{payment_id}' with status '{risk_status}'.")
         return case
+
+
+class RevenueRiskDetector:
+    """
+    Analyzes normalized payments to detect if they represent recoverable revenue.
+    """
+    @staticmethod
+    def detect_risk(payment: NormalizedPayment, retry_count: int = 0) -> RevenueRiskCase:
+        # Determine root cause
+        root_cause = RootCauseClassifier.classify(payment.failure_reason)
+        
+        # Determine eligibility
+        eligible, reason = PaymentStateVerifier.get_recovery_eligibility(payment.status)
+        
+        # Map risk type
+        status = payment.status.upper()
+        reason_lower = (payment.failure_reason or "").lower()
+        
+        if status == "PENDING":
+            risk_type = "CHECKOUT_ABANDONED"
+        elif "subscription" in reason_lower or "recurring" in reason_lower:
+            risk_type = "SUBSCRIPTION_PAYMENT_FAILED"
+        elif "timeout" in reason_lower or "network" in reason_lower or "gateway" in reason_lower:
+            risk_type = "PAYMENT_TIMEOUT"
+        elif status == "FAILED":
+            risk_type = "PAYMENT_FAILED"
+        else:
+            risk_type = "UNKNOWN"
+
+        case_id = f"case_{payment.payment_id}"
+        
+        return RevenueRiskCase(
+            case_id=case_id,
+            payment_id=payment.payment_id,
+            amount_minor=payment.amount_minor,
+            currency=payment.currency,
+            risk_type=risk_type,
+            root_cause=root_cause,
+            detected_at=datetime.now(timezone.utc),
+            retry_count=retry_count,
+            eligibility=eligible,
+            reason=reason
+        )
+

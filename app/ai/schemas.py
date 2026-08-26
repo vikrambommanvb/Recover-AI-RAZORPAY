@@ -16,10 +16,11 @@ class AIServiceRequest(BaseModel):
 class AIServiceResponse(BaseModel):
     """Structured response expected from the AI provider."""
     action: RecoveryAction = Field(..., description="Recommended recovery action")
-    confidence: float = Field(..., description="Confidence score between 0.0 and 1.0")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score between 0.0 and 1.0")
     reason: str = Field(..., description="Reasoning/justification for the action")
     root_cause: str = Field(..., description="Diagnosed root cause for the failure")
     risk_factors: List[str] = Field(default_factory=list, description="Identified risk factors")
     recommended_message_type: Optional[str] = Field(None, description="Recommended message type to send")
     requires_human_review: bool = Field(default=False, description="Flag indicating if human review is required")
+    suggested_delay_seconds: Optional[int] = Field(None, ge=0, description="Suggested delay in seconds before triggering action")
 
