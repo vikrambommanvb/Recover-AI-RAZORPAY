@@ -6,4 +6,6 @@ RECOVERY_ACTIONS_COLLECTION = "recovery_actions"
 AUDIT_LOGS_COLLECTION = "audit_logs"
 EVALUATION_RUNS_COLLECTION = "evaluation_runs"
 WEBHOOK_EVENTS_COLLECTION = "webhook_events"
+EVALUATION_RESULTS_COLLECTION = "evaluation_results"
+
 

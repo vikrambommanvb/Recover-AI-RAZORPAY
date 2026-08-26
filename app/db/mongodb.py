@@ -38,7 +38,10 @@ class Database:
             await self.init_indexes()
         except Exception as e:
             logger.error(f"Could not connect to MongoDB on startup: {e}")
-            # Keep client initialized but don't crash, allowing /health to function
+            logger.warning("WARNING: Falling back to offline in-memory MockDatabase client.")
+            from app.db.mock_db import MockDatabase
+            self.db = MockDatabase()
+
 
     async def init_indexes(self):
         """Create necessary indexes for payments and recovery cases."""
@@ -52,7 +55,9 @@ class Database:
                 AGENT_DECISIONS_COLLECTION,
                 AUDIT_LOGS_COLLECTION,
                 RECOVERY_ACTIONS_COLLECTION,
-                WEBHOOK_EVENTS_COLLECTION
+                WEBHOOK_EVENTS_COLLECTION,
+                EVALUATION_RUNS_COLLECTION,
+                EVALUATION_RESULTS_COLLECTION
             )
             logger.info("Initializing database indexes...")
             # Unique index on payment_id
@@ -77,6 +82,12 @@ class Database:
             await self.db[RECOVERY_ACTIONS_COLLECTION].create_index("payment_id")
             # Indexes on webhook events
             await self.db[WEBHOOK_EVENTS_COLLECTION].create_index("event_id", unique=True)
+            # Indexes on evaluation runs
+            await self.db[EVALUATION_RUNS_COLLECTION].create_index("evaluation_id", unique=True)
+            # Indexes on evaluation results
+            await self.db[EVALUATION_RESULTS_COLLECTION].create_index("evaluation_id")
+            await self.db[EVALUATION_RESULTS_COLLECTION].create_index("case_id")
+            await self.db[EVALUATION_RESULTS_COLLECTION].create_index("payment_id")
             logger.info("Database indexes successfully initialized.")
         except Exception as e:
             logger.error(f"Failed to create database indexes: {e}")

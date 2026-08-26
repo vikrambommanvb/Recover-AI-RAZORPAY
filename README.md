@@ -230,6 +230,64 @@ Run complete pytest suite covering models, guardrails, classification, history, 
 pytest
 ```
 
+
+---
+
+## Phase 5: Revenue Recovery Evaluation & Judge Demo
+
+Phase 5 introduces the comprehensive **Evaluation and Demonstration Layer** for RecoverAI, enabling batch simulations, strict revenue metrics accounting, deterministic safety blocks, and an interactive frontend dashboard for judges.
+
+### Key Evaluation Metrics & Formulae
+* **Revenue Recovered**: Calculated exclusively from verified successfully captured payments on the gateway. AI recommendations, API request success, policy allowance, or order creations do **NOT** count towards recovered revenue:
+  $$\text{Revenue Recovered} = \sum \text{Amount of verified successful recovery payments}$$
+* **Revenue At Risk**:
+  $$\text{Revenue At Risk} = \sum \text{Amount of eligible unresolved payment failures}$$
+* **Revenue Recovery Rate**:
+  $$\text{Revenue Recovery Rate} = \frac{\text{Revenue Recovered}}{\text{Revenue At Risk}}$$
+* **Case Recovery Rate**:
+  $$\text{Case Recovery Rate} = \frac{\text{Successfully Recovered Cases}}{\text{Eligible Cases}}$$
+* **Policy Override Rate**:
+  $$\text{Policy Override Rate} = \frac{\text{AI recommendations overridden by Policy Engine}}{\text{Total AI decisions}}$$
+
+### Safety & Stopping Rules
+The system enforces deterministic stopping and escalation rules that cannot be bypassed by the LLM:
+* **STOP** if payment has already succeeded on the gateway.
+* **STOP** if the maximum attempt limit of 2 is exceeded (forces escalation).
+* **STOP** if the transaction amount exceeds ₹5,000.
+* **STOP** if the case state is unknown or ambiguous.
+* **STOP** if the cooldown period of 5 minutes has not elapsed.
+
+### Evaluation API Endpoints
+* **`POST /evaluations`**: Starts a deterministic batch evaluation run.
+* **`GET /evaluations/{evaluation_id}`**: Retrieves the aggregated run statistics.
+* **`GET /evaluations/{evaluation_id}/metrics`**: Retrieves charts data (funnel stages, outcome distributions, AI recommendations).
+* **`GET /evaluations/{evaluation_id}/cases`**: Retrieves paginated tabular results for individual cases.
+
+### Command Line Demo Runner
+Run a deterministic evaluation run of 500 records offline:
+```bash
+PYTHONPATH=. python scripts/run_demo.py
+```
+This script runs entirely offline (using in-memory `MockDatabase` if MongoDB Atlas is not configured) and prints a formatted summary in Indian Rupees.
+
+### Launching the Dashboard Frontend
+1. Start the FastAPI backend:
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+2. Navigate to the frontend directory, install dependencies, and start the development server:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+3. Open [http://localhost:5173](http://localhost:5173) in your browser. The dashboard displays:
+   * Large KPI cards for revenue metrics.
+   * Funnel chart visualization.
+   * Outcome and AI decision distributions.
+   * Step-by-step case timelines with audit trails.
+   * Interactive failure scenario simulators (unknown payment state blocks & API gateway timeouts).
+
 ---
 
 ## Architecture Diagram
